@@ -2702,11 +2702,11 @@ function renderCompareBar(){
     const img = sourceImg(p.img);
     return `
     <div class="compare-chip">
-      <button type="button" class="compare-chip-remove" data-remove="${p.sku}" aria-label="Quitar">×</button>
+      <button type="button" class="compare-chip-remove" data-remove="${p.entryId || (p.focusAngulo ? String(p.sku).toUpperCase() + "|" + p.focusAngulo : p.sku)}" aria-label="Quitar">×</button>
       <div class="compare-chip-thumb">${img ? `<img src="${escAttr(img)}" alt="" loading="lazy" onerror="this.remove()">` : ""}</div>
       <div class="compare-chip-info">
         <span class="compare-chip-name">${p.nombre}</span>
-        ${p.sku ? `<span class="compare-chip-sku">${p.sku}</span>` : ""}
+        ${p.sku ? `<span class="compare-chip-sku">${p.focusAngulo ? p.sku + " · " + p.focusAngulo : p.sku}</span>` : ""}
       </div>
     </div>
   `;

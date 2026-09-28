@@ -12,7 +12,7 @@ if(!window.MacroledCompare){
       if(!product || !product.sku) return _fallbackList.slice();
       if(_fallbackList.some(p => p.sku === product.sku)) return _fallbackList.slice();
       if(_fallbackList.length >= 3) return _fallbackList.slice();
-      _fallbackList.push({ sku: product.sku, nombre: product.nombre || "", img: product.img || "" });
+      _fallbackList.push({ sku: product.sku, nombre: product.nombre || "", img: product.img || "", focusAngulo: product.focusAngulo || "" });
       return _fallbackList.slice();
     },
     removeFromCompare: (sku) => {
@@ -28,6 +28,12 @@ if(!window.MacroledCompare){
         item.variantSku = variantSku;
         if(img) item.img = img;
       }
+      return _fallbackList.slice();
+    },
+    setFocusAngulo: (sku, angulo) => {
+      const key = String(sku || "").trim().toUpperCase();
+      const item = _fallbackList.find(p => String(p.sku || "").trim().toUpperCase() === key || String(p.variantSku || "").trim().toUpperCase() === key);
+      if(item && angulo) item.focusAngulo = angulo;
       return _fallbackList.slice();
     }
   };
@@ -370,6 +376,69 @@ function anguloFromDoc(doc){
   return m ? `${m[1]}°` : "";
 }
 
+/* Racks Focus: el ángulo no está en la base. Se elige en la ficha o acá
+   y pisa "Ángulo de apertura" solo para estos SKU. */
+const FOCUS_RACK_SKUS = new Set([
+  "FOCUS-BR-250W",
+  "FOCUS-BR-500W",
+  "FOCUS-BR-750W",
+  "FOCUS-BR-1000W"
+]);
+const FOCUS_ANGLES = ["20°", "40°", "60°", "90°", "Asimétrico"];
+const FOCUS_ANGLE_DEFAULT = "20°";
+
+function isFocusRackSku(sku){
+  return FOCUS_RACK_SKUS.has(String(sku || "").trim().toUpperCase());
+}
+
+function normalizeFocusAngle(value){
+  const raw = String(value || "").trim().toLowerCase();
+  return FOCUS_ANGLES.find(angle => angle.toLowerCase() === raw) || FOCUS_ANGLE_DEFAULT;
+}
+
+function isAnguloAperturaRow(row){
+  const label = foldSpecLabel(row && row.label);
+  const key = foldSpecLabel(String(row && row.key || "").replace(/_/g, " "));
+  if(label === "angulo de apertura" || key === "angulo de apertura" || key === "angulo apertura") return true;
+  return /angulo/.test(label) && /apertura/.test(label);
+}
+
+function applyFocusAngle(product){
+  if(!product || !isFocusRackSku(product.sku)) return product;
+  const angle = normalizeFocusAngle(product.focusAngulo);
+  product.focusAngulo = angle;
+  product.specs = product.specs || {};
+  product.specRows = product.specRows || [];
+  let matched = false;
+  product.specRows.forEach(row => {
+    if(!isAnguloAperturaRow(row)) return;
+    product.specs[row.key] = angle;
+    matched = true;
+  });
+  if(!matched){
+    const key = "angulo_apertura";
+    product.specRows.push({
+      key,
+      label: "Ángulo de apertura",
+      group: "Lumínicas"
+    });
+    product.specs[key] = angle;
+  }
+  return product;
+}
+
+function focusAnglePickerHtml(p){
+  if(!p || !isFocusRackSku(p.sku)) return "";
+  const current = normalizeFocusAngle(p.focusAngulo);
+  const opts = FOCUS_ANGLES.map(angle =>
+    `<option value="${escAttr(angle)}"${angle === current ? " selected" : ""}>${escAttr(angle)}</option>`
+  ).join("");
+  return `<label class="pvariant pvariant-focus">
+    <span class="pvariant-label">Ángulo</span>
+    <select data-focus-angle data-entry="${escAttr(p.entryId || p.principalSku)}" data-principal="${escAttr(p.principalSku)}" aria-label="Elegir ángulo">${opts}</select>
+  </label>`;
+}
+
 function resolvedKelvin(doc, docs){
   const info = tempInfoFromDoc(doc);
   if(info.kelvin) return info.kelvin;
@@ -527,8 +596,12 @@ function mapDocToCompared(doc, extras){
   }
   const variants = extras.variants || [];
   const axes = extras.axes || (variants[0] && variants[0].axes) || detectVariantAxes(variants.map(v => v.doc));
-  return {
-    id: extras.principalSku || doc.sku,
+  const entryId = extras.entryId || (extras.focusAngulo
+    ? String(extras.principalSku || doc.sku).trim().toUpperCase() + "|" + String(extras.focusAngulo).trim()
+    : (extras.principalSku || doc.sku));
+  return applyFocusAngle({
+    id: entryId,
+    entryId,
     principalSku: extras.principalSku || doc.sku,
     sku: doc.sku,
     family: doc.familia || doc.macrofamilia || "",
@@ -539,8 +612,9 @@ function mapDocToCompared(doc, extras){
     specs: mapAtributosToSpecs(doc),
     specRows: specRowsFromDoc(doc),
     variants,
-    axes
-  };
+    axes,
+    focusAngulo: extras.focusAngulo || ""
+  });
 }
 
 // variante amigable del producto para el mini-header (ej. "Blanco cálido
@@ -549,11 +623,15 @@ function mapDocToCompared(doc, extras){
 // SKU ya se muestra en su propia línea, así que acá directamente no se
 // agrega nada si no hay variante que valga la pena mostrar.
 function miniVariantLabel(p){
-  if(!p || !p.variants || p.variants.length < 2) return "";
-  const current = p.variants.find(v => v.sku === p.sku);
-  const doc = current ? current.doc : null;
-  if(!doc) return "";
-  return variantFriendlyLabel(doc, p.axes, p.variants.map(v => v.doc)) || "";
+  const angle = p && isFocusRackSku(p.sku) ? normalizeFocusAngle(p.focusAngulo) : "";
+  let base = "";
+  if(p && p.variants && p.variants.length >= 2){
+    const current = p.variants.find(v => v.sku === p.sku);
+    const doc = current ? current.doc : null;
+    if(doc) base = variantFriendlyLabel(doc, p.axes, p.variants.map(v => v.doc)) || "";
+  }
+  if(base && angle) return `${base} · ${angle}`;
+  return base || angle;
 }
 
 function currentVariantSummary(p){
@@ -567,7 +645,15 @@ function currentVariantSummary(p){
 function applyVariantToProduct(product, sku){
   const opt = (product.variants || []).find(v => v.sku === sku);
   if(!opt) return product;
-  return mapDocToCompared(opt.doc, { principalSku: product.principalSku, variants: product.variants, axes: product.axes });
+  return mapDocToCompared(opt.doc, {
+    principalSku: product.principalSku,
+    entryId: product.entryId,
+    variants: product.variants,
+    axes: product.axes,
+    nombre: product.name,
+    img: product.img,
+    focusAngulo: product.focusAngulo
+  });
 }
 
 function uniqueLabeledDocs(docs, axes, preferredSku){
@@ -593,7 +679,7 @@ function variantPickerHtml(p){
   }).join("");
   return `<label class="pvariant">
     <span class="pvariant-label">${escAttr(title)}</span>
-    <select data-principal="${escAttr(p.principalSku)}" aria-label="${escAttr("Elegir " + title)}">${opts}</select>
+    <select data-entry="${escAttr(p.entryId || p.principalSku)}" data-principal="${escAttr(p.principalSku)}" aria-label="${escAttr("Elegir " + title)}">${opts}</select>
   </label>`;
 }
 
@@ -654,9 +740,11 @@ async function hydrateComparedProduct(doc, variantSku, extras){
     || doc;
   return mapDocToCompared(active, {
     principalSku: extras.principalSku || (doc && doc.sku) || (active && active.sku),
+    entryId: extras.entryId,
     nombre: extras.nombre,
     img: extras.img,
-    variants
+    variants,
+    focusAngulo: extras.focusAngulo
   });
 }
 
@@ -962,6 +1050,7 @@ function render(){
           ${canOpenFicha ? `<span class="phead-hint">${ICON_LINK}<span>Ver ficha</span></span>` : ""}
           ${linkClose}
           ${variantPickerHtml(p)}
+          ${focusAnglePickerHtml(p)}
         </div>`;
     }else{
       html += `
@@ -1016,16 +1105,37 @@ function render(){
       render();
     });
   });
-  grid.querySelectorAll(".pvariant select").forEach(sel => {
+  grid.querySelectorAll(".pvariant select:not([data-focus-angle])").forEach(sel => {
     sel.addEventListener("change", () => {
-      const principalSku = sel.dataset.principal;
+      const entryId = sel.dataset.entry || sel.dataset.principal;
       const sku = sel.value;
       comparedProducts = comparedProducts.map(p =>
-        p.principalSku === principalSku ? applyVariantToProduct(p, sku) : p
+        (p.entryId || p.principalSku) === entryId ? applyVariantToProduct(p, sku) : p
       );
-      const updated = comparedProducts.find(p => p.principalSku === principalSku);
+      const updated = comparedProducts.find(p => (p.entryId || p.principalSku) === entryId);
       if(window.MacroledCompare.setCompareVariant){
-        window.MacroledCompare.setCompareVariant(principalSku, sku, updated && updated.img);
+        window.MacroledCompare.setCompareVariant(entryId, sku, updated && updated.img);
+      }
+      render();
+    });
+  });
+  grid.querySelectorAll("[data-focus-angle]").forEach(sel => {
+    sel.addEventListener("change", () => {
+      const entryId = sel.dataset.entry || sel.dataset.principal;
+      const angle = normalizeFocusAngle(sel.value);
+      comparedProducts = comparedProducts.map(p => {
+        if((p.entryId || p.principalSku) !== entryId) return p;
+        p.focusAngulo = angle;
+        const nextId = String(p.sku || "").trim().toUpperCase() + "|" + angle;
+        const taken = comparedProducts.some(other => other !== p && (other.entryId || other.id) === nextId);
+        if(!taken){
+          p.entryId = nextId;
+          p.id = nextId;
+        }
+        return applyFocusAngle(p);
+      });
+      if(window.MacroledCompare.setFocusAngulo){
+        window.MacroledCompare.setFocusAngulo(entryId, angle);
       }
       render();
     });
@@ -1065,14 +1175,25 @@ function render(){
 function openModal(){
   window.MacroledComparePicker.open({
     search: searchTypesenseModal,
-    isSelected: sku => comparedProducts.some(p => p.principalSku === sku || p.sku === sku),
+    isSelected: sku => {
+      const matches = comparedProducts.filter(p => skuKey(p.principalSku) === skuKey(sku) || skuKey(p.sku) === skuKey(sku));
+      if(!isFocusRackSku(sku)) return matches.length > 0;
+      const used = new Set(matches.map(p => normalizeFocusAngle(p.focusAngulo)));
+      return used.size >= FOCUS_ANGLES.length;
+    },
     atLimit: () => comparedProducts.length >= COMPARE_MAX,
     add: async doc => {
       const sku = doc.sku || doc.id || "";
-      const hydrated = await hydrateComparedProduct(doc, sku, { principalSku: sku });
-      if (comparedProducts.length >= COMPARE_MAX || comparedProducts.some(p => p.principalSku === sku || p.sku === sku)) return;
+      const used = new Set(comparedProducts
+        .filter(p => skuKey(p.principalSku) === skuKey(sku) || skuKey(p.sku) === skuKey(sku))
+        .map(p => normalizeFocusAngle(p.focusAngulo)));
+      const focusAngulo = isFocusRackSku(sku) ? (FOCUS_ANGLES.find(angle => !used.has(angle)) || "") : "";
+      if(isFocusRackSku(sku) && used.size && !focusAngulo) return;
+      const entryId = focusAngulo ? String(sku).trim().toUpperCase() + "|" + focusAngulo : sku;
+      const hydrated = await hydrateComparedProduct(doc, sku, { principalSku: sku, entryId, focusAngulo });
+      if (comparedProducts.length >= COMPARE_MAX || comparedProducts.some(p => (p.entryId || p.id) === entryId)) return;
       comparedProducts.push(hydrated);
-      window.MacroledCompare.addToCompare({ sku, nombre: hydrated.name || "", img: hydrated.img || parseImages(doc)[0] || "" });
+      window.MacroledCompare.addToCompare({ sku, nombre: hydrated.name || "", img: hydrated.img || parseImages(doc)[0] || "", focusAngulo, entryId });
       render();
     }
   });
@@ -1479,8 +1600,9 @@ async function resolveProductsFromStorage(){
 
     comparedProducts = stored.map(p => {
       const principal = bySku[skuKey(p.sku)];
+      const storedEntry = p.entryId || (p.focusAngulo ? String(p.sku).trim().toUpperCase() + "|" + p.focusAngulo : p.sku);
       if(!principal){
-        return { id: p.sku, principalSku: p.sku, sku: p.sku, family: "", name: p.nombre || p.sku, img: p.img || "", ficha: "#", specs: {}, specRows: [], variants: [] };
+        return { id: storedEntry, entryId: storedEntry, principalSku: p.sku, sku: p.sku, family: "", name: p.nombre || p.sku, img: p.img || "", ficha: "#", specs: {}, specRows: [], variants: [], focusAngulo: p.focusAngulo || "" };
       }
       const skuSet = new Set(parseSkuList(principal.variantes_sku));
       skuSet.add(principal.sku);
@@ -1490,9 +1612,11 @@ async function resolveProductsFromStorage(){
       const activeSku = (p.variantSku && bySku[skuKey(p.variantSku)]) ? p.variantSku : principal.sku;
       return mapDocToCompared(bySku[skuKey(activeSku)] || principal, {
         principalSku: p.sku,
+        entryId: storedEntry,
         nombre: p.nombre,
         img: p.img,
-        variants
+        variants,
+        focusAngulo: p.focusAngulo
       });
     });
   }catch(err){

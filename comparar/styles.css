@@ -813,6 +813,7 @@
     }
     .cell.product-head .phead-hint,
     .pvariant{display:none !important;}
+    .pvariant-focus{display:flex !important;}
     .cell.product-head .psku{
       font-size:12px !important;
       margin-top:6px !important;

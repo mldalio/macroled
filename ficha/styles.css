@@ -101,45 +101,31 @@ main{padding:calc(26px + clamp(12px,2vw,24px)) clamp(12px,2vw,24px) 0;}
   border-radius:10px;
 }
 
-/* Mientras llega el producto desde la base, la ficha queda tapada. */
-.ficha-loader{display:none;}
+/* Mientras llega el producto, el overlay global (#ml-preload) tapa la página.
+   is-hydrating evita mostrar el placeholder del HTML antes de pintar el SKU. */
 .wrap.is-hydrating{
   position:relative;
   min-height:70vh;
 }
-.wrap.is-hydrating > :not(.ficha-loader){
+.wrap.is-hydrating > *{
   visibility:hidden;
   position:absolute;
   width:1px;
   height:1px;
   overflow:hidden;
 }
-.wrap.is-hydrating .ficha-loader{
-  display:flex;
-  min-height:70vh;
-  align-items:center;
-  justify-content:center;
-  flex-direction:column;
-  gap:14px;
-  color:var(--muted);
+.ficha-error{
+  margin:0 0 18px;
+  padding:14px 16px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#fff;
+  color:var(--ink);
   font-size:14px;
-  font-weight:600;
-}
-.ficha-loader__spin{
-  width:36px;
-  height:36px;
-  border-radius:50%;
-  border:3px solid var(--line);
-  border-top-color:var(--brand);
-  animation:ficha-spin .7s linear infinite;
-}
-.ficha-loader.is-error .ficha-loader__text{
-  max-width:340px;
-  text-align:center;
-  line-height:1.45;
   font-weight:500;
+  line-height:1.45;
 }
-@keyframes ficha-spin{to{transform:rotate(360deg)}}
+.ficha-error[hidden]{display:none !important;}
 
 /* —— Site header —— */
 .topbar{border-bottom:1px solid var(--line-soft);background:var(--white);}
@@ -488,8 +474,19 @@ main{padding:calc(26px + clamp(12px,2vw,24px)) clamp(12px,2vw,24px) 0;}
   background:#f4faff;border-color:#54b1e5;
   color:rgb(56, 58, 58);font-weight:600;cursor:default;
 }
-.variant-chip-radio{
-  position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;
+.variant-chip-radio,
+.focus-angle-radio{
+  position:absolute !important;
+  opacity:0 !important;
+  width:1px !important;
+  height:1px !important;
+  margin:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  appearance:none !important;
+  -webkit-appearance:none !important;
+  pointer-events:none !important;
+  clip:rect(0,0,0,0) !important;
 }
 .variant-swatch{
   width:14px;height:14px;border-radius:50%;flex:none;

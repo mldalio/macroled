@@ -1125,6 +1125,68 @@
   }
 
   let dbSpecRows = [];
+  let lastSpecExtra = {};
+
+  /* Racks Focus: el ángulo no está en la base. Se elige en la ficha y viaja
+     a la comparativa como dato de front. */
+  const FOCUS_RACK_SKUS = new Set([
+    "FOCUS-BR-250W",
+    "FOCUS-BR-500W",
+    "FOCUS-BR-750W",
+    "FOCUS-BR-1000W",
+  ]);
+  const FOCUS_ANGLES = ["20°", "40°", "60°", "90°", "Asimétrico"];
+  const FOCUS_ANGLE_DEFAULT = "20°";
+  const focusAngleBySku = Object.create(null);
+
+  function focusSkuKey(sku) {
+    return String(sku || "").trim().toUpperCase();
+  }
+
+  function isFocusRackSku(sku) {
+    return FOCUS_RACK_SKUS.has(focusSkuKey(sku));
+  }
+
+  function focusAngleFor(sku) {
+    const key = focusSkuKey(sku);
+    if (!FOCUS_RACK_SKUS.has(key)) return "";
+    if (focusAngleBySku[key] && FOCUS_ANGLES.includes(focusAngleBySku[key])) return focusAngleBySku[key];
+    try {
+      const stored = sessionStorage.getItem("ml_focus_angle_" + key);
+      if (FOCUS_ANGLES.includes(stored)) {
+        focusAngleBySku[key] = stored;
+        return stored;
+      }
+    } catch (_) {}
+    try {
+      const list = window.MacroledCompare && window.MacroledCompare.getCompareList();
+      const saved = (list || []).filter((item) => focusSkuKey(item.sku) === key || focusSkuKey(item.variantSku) === key);
+      if (saved.length === 1 && FOCUS_ANGLES.includes(saved[0].focusAngulo)) {
+        focusAngleBySku[key] = saved[0].focusAngulo;
+        return saved[0].focusAngulo;
+      }
+    } catch (_) {}
+    focusAngleBySku[key] = FOCUS_ANGLE_DEFAULT;
+    return FOCUS_ANGLE_DEFAULT;
+  }
+
+  function withFocusAngleRow(groups, map) {
+    const sku = String((map && map.SKU) || "").trim();
+    if (!isFocusRackSku(sku)) return groups;
+    const angle = focusAngleFor(sku);
+    map["Ángulo de apertura"] = angle;
+    const copy = groups.map((group) => ({ ...group, rows: group.rows.slice() }));
+    let luminic = copy.find((group) => /lum[ií]nic/i.test(group.title));
+    if (!luminic) {
+      luminic = { title: "Características lumínicas", icon: ICON_SUN, rows: [] };
+      const electricIdx = copy.findIndex((group) => /el[eé]ctric/i.test(group.title));
+      copy.splice(electricIdx >= 0 ? electricIdx + 1 : 0, 0, luminic);
+    }
+    if (!luminic.rows.some((row) => normalizeSpecKey(row.key) === "Ángulo de apertura")) {
+      luminic.rows.push({ key: "Ángulo de apertura", tip: "Ángulo en el que se distribuye la luz." });
+    }
+    return copy;
+  }
 
   function specTipFor(key) {
     for (let i = 0; i < SPEC_GROUPS.length; i++) {
@@ -1184,7 +1246,7 @@
     const root = document.getElementById("specGroups");
     if (!root) return;
     const map = specs || {};
-    const groups = dbSpecRows.length ? groupsFromDatabase() : SPEC_GROUPS;
+    const groups = withFocusAngleRow(dbSpecRows.length ? groupsFromDatabase() : SPEC_GROUPS, map);
     let html = "";
 
     groups.forEach((group, gi) => {
@@ -2633,7 +2695,8 @@
     "Protección IP": "IP",
   };
 
-  function renderChipGroup(label, groupName, entries, activeValue) {
+  function renderChipGroup(label, groupName, entries, activeValue, inputClass) {
+    const radioClass = inputClass ? inputClass + " variant-chip-radio" : "variant-chip-radio";
     let html =
       `<div class="variant-group"><span class="variant-label">${escapeHtml(label)}</span>` +
       `<div class="variant-chips" role="radiogroup" aria-label="${escapeHtml(label)}">`;
@@ -2652,7 +2715,7 @@
           ? ` title="${escapeHtml(entry.value)}: no disponible en esta combinación"`
           : "") +
         `>` +
-        `<input type="radio" class="variant-chip-radio" id="${inputId}" name="${groupName}"` +
+        `<input type="radio" class="${radioClass}" id="${inputId}" name="${groupName}"` +
         ` data-dim="${escapeHtml(entry.dim || "")}" data-val="${escapeHtml(entry.value)}"` +
         (entry.sku ? ` data-sku="${escapeHtml(entry.sku)}"` : "") +
         (isActive ? " checked" : "") +
@@ -2711,8 +2774,12 @@
     const currentSpecs = parseSpecs(heroItem);
     let html = "";
 
+    const heroSku = heroItem ? (heroItem.getAttribute("data-sku") || "").trim() : "";
+    const focusRack = isFocusRackSku(heroSku);
+
     if (dimensionKeys.length) {
       dimensionKeys.forEach((key) => {
+        if (focusRack && normalizeSpecKey(key) === "Ángulo de apertura") return;
         /* "Temperatura del color" contiene "color", así que se chequea primero. */
         const isTempDim = TEMP_SPEC_KEYS.has(key);
         const isBodyColorDim = !isTempDim && normKey(key).indexOf("color") !== -1;
@@ -2733,8 +2800,7 @@
             unavailable:
               dimensionKeys.length > 1 && !isCombinationAvailable(currentSpecs, key, value),
           })),
-          (currentSpecs[key] || "").trim(),
-          key
+          (currentSpecs[key] || "").trim()
         );
       });
     } else if (siblings.length > 1) {
@@ -2747,6 +2813,16 @@
         "variant-fallback",
         entries,
         active ? active.value : ""
+      );
+    }
+
+    if (focusRack) {
+      html += renderChipGroup(
+        "Ángulo",
+        "focus-angulo",
+        FOCUS_ANGLES.map((value) => ({ value: value })),
+        focusAngleFor(heroSku),
+        "focus-angle-radio"
       );
     }
 
@@ -2936,12 +3012,14 @@
       ies: iesUrl,
     });
 
-    updateSpecVals(specs, {
+    if (isFocusRackSku(sku)) specs["Ángulo de apertura"] = focusAngleFor(sku);
+    lastSpecExtra = {
       SKU: sku,
       EAN13: ean13,
       Familia: family,
       Macrofamilia: macro,
-    });
+    };
+    updateSpecVals(specs, lastSpecExtra);
 
     const ipVal = (specs["Protección IP"] || "").trim();
     const ikVal = (specs["Protección IK"] || "").trim();
@@ -3126,6 +3204,35 @@
 
     dimensionKeys = resolveDimensions(heroItem, siblings);
 
+    if (!variantsBound) {
+      variantsBound = true;
+      variantsTarget.addEventListener("change", (e) => {
+        const input = e.target;
+        if (!input || !input.classList) return;
+        if (input.classList.contains("focus-angle-radio")) {
+          commitFocusAngle(input.getAttribute("data-val") || "");
+          return;
+        }
+        if (!input.classList.contains("variant-chip-radio")) return;
+        const match = findMatchForInput(input);
+        if (!match) return;
+        userPickedVariant = true;
+        applyProduct(match);
+      });
+
+      window.addEventListener("popstate", () => {
+        if (!siblings || siblings.length <= 1) return;
+        const slug = (location.pathname || "").replace(/^\//, "");
+        const match =
+          siblings.find((el) => {
+            const link = (el.getAttribute("data-link") || el.getAttribute("data-product-url") || "").replace(/^\//, "");
+            return link === slug;
+          }) ||
+          siblings.find((el) => (el.getAttribute("data-sku") || "") === (history.state && history.state.sku));
+        if (match) applyProduct(match, { skipHistory: true });
+      });
+    }
+
     if (siblings.length <= 1) {
       variantsTarget.hidden = true;
       console.warn(
@@ -3138,30 +3245,39 @@
     }
 
     applyProduct(heroItem, { skipHistory: true });
-
-    if (variantsBound) return;
-    variantsBound = true;
-
-    variantsTarget.addEventListener("change", (e) => {
-      const input = e.target;
-      if (!input.classList || !input.classList.contains("variant-chip-radio")) return;
-      const match = findMatchForInput(input);
-      if (!match) return;
-      userPickedVariant = true;
-      applyProduct(match);
-    });
-
-    window.addEventListener("popstate", () => {
-      const slug = (location.pathname || "").replace(/^\//, "");
-      const match =
-        siblings.find((el) => {
-          const link = (el.getAttribute("data-link") || el.getAttribute("data-product-url") || "").replace(/^\//, "");
-          return link === slug;
-        }) ||
-        siblings.find((el) => (el.getAttribute("data-sku") || "") === (history.state && history.state.sku));
-      if (match) applyProduct(match, { skipHistory: true });
-    });
   }
+
+  function commitFocusAngle(angle) {
+    if (!FOCUS_ANGLES.includes(angle) || !heroItem) return;
+    const sku = (heroItem.getAttribute("data-sku") || "").trim();
+    if (!isFocusRackSku(sku)) return;
+    const key = focusSkuKey(sku);
+    focusAngleBySku[key] = angle;
+    try {
+      sessionStorage.setItem("ml_focus_angle_" + key, angle);
+    } catch (_) {}
+    const specs = parseSpecs(heroItem);
+    specs["Ángulo de apertura"] = angle;
+    updateSpecVals(specs, Object.assign({ SKU: sku }, lastSpecExtra));
+    const trustAngEl = document.querySelector("[data-trust-angulo]");
+    if (trustAngEl) {
+      trustAngEl.textContent = angle;
+      trustAngEl.hidden = !angle;
+    }
+    setTrustEligible("angulo", !!angle);
+    syncTrustPriority();
+    const ctx = window.__mlProductCtx;
+    if (ctx && ctx.specs) ctx.specs["Ángulo de apertura"] = angle;
+    if (variantsTarget) variantsTarget.innerHTML = buildChipsHtml();
+    window.dispatchEvent(new CustomEvent("ml-focus-angle-changed", { detail: { sku: sku, angulo: angle } }));
+  }
+
+  window.MacroledFocusAngle = {
+    isFocusSku: isFocusRackSku,
+    get: function (sku) {
+      return isFocusRackSku(sku) ? focusAngleFor(sku) : "";
+    },
+  };
 
   /* —— AI assistant —— */
   const CONTACTO_URL = "https://macroled.com.ar/contacto";
@@ -3778,6 +3894,7 @@
   function revealFicha() {
     const wrap = document.querySelector(".wrap.is-hydrating");
     if (wrap) wrap.classList.remove("is-hydrating");
+    if (window.MacroledPreload) window.MacroledPreload.done();
   }
 
   function bootFicha() {
@@ -3800,13 +3917,12 @@
   }
 
   function showFichaError(message) {
-    const loader = document.getElementById("fichaLoader");
-    if (!loader) return;
-    loader.classList.add("is-error");
-    const text = loader.querySelector(".ficha-loader__text");
-    if (text) text.textContent = message;
-    const spin = loader.querySelector(".ficha-loader__spin");
-    if (spin) spin.hidden = true;
+    const err = document.getElementById("fichaError");
+    if (err) {
+      err.hidden = false;
+      err.textContent = message;
+    }
+    revealFicha();
   }
 
   function readInitialSku() {
@@ -4152,6 +4268,7 @@
     setSheetText("ficha-lead", description);
     setSheetText("ficha-eyebrow", [macro, family].filter(Boolean).join(" · "));
     forcedSheetUrl = absoluteProductUrl(doc);
+    if (isFocusRackSku(sku)) specs["Ángulo de apertura"] = focusAngleFor(sku);
     updateSpecVals(specs, {
       SKU: sku,
       EAN13: ean13,

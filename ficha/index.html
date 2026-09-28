@@ -1,11 +1,14 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="ml-loading" data-ml-preload="typesense">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Roma Smart 30W — MACROLED</title>
 <!--
   WEBFLOW — Custom Code → Head (copiar):
+  En la etiqueta html de la página: class="ml-loading" data-ml-preload="typesense"
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/julietaromano-wq/macroled@665ae8f/global/preload.css">
+  <script src="https://cdn.jsdelivr.net/gh/julietaromano-wq/macroled@665ae8f/global/preload.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://typesense.coresagroup.com" crossorigin>
@@ -14,13 +17,15 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/julietaromano-wq/macroled@665ae8f/ficha/styles.css">
   (Usá el hash del commit para saltar cache del CDN)
 -->
+<link rel="stylesheet" href="../global/preload.css">
+<script src="../global/preload.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://d1zltvqju4u8ql.cloudfront.net" crossorigin>
 <link rel="preconnect" href="https://typesense.coresagroup.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css">
-<link rel="stylesheet" href="styles.css?v=20260903-1">
+<link rel="stylesheet" href="styles.css?v=20260925-angulo2">
 <link rel="stylesheet" href="../global/compare-bar.css">
 <link rel="stylesheet" href="../global/floating-ui.css">
 <link rel="stylesheet" href="../global/compare-picker.css">
@@ -29,10 +34,7 @@
 
 <main>
   <div class="wrap is-hydrating">
-    <div class="ficha-loader" id="fichaLoader" role="status" aria-live="polite">
-      <span class="ficha-loader__spin" aria-hidden="true"></span>
-      <span class="ficha-loader__text">Cargando producto…</span>
-    </div>
+    <p class="ficha-error" id="fichaError" hidden></p>
     <nav class="crumb" aria-label="Miga de pan">
       <a href="/productos">Productos</a><span class="sep">›</span>
       <a id="crumb-family">Luminarias Inalámbricas</a><span class="sep">›</span>
@@ -882,12 +884,12 @@
   y el CSS de las cards ya viven en styles.css / destacados.js de este repo.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
-<script src="comparar.js"></script>
+<script src="comparar.js?v=20260925-angulos"></script>
 <script src="../global/compare-picker.js"></script>
-<script src="script.js?v=pdf-dl"></script>
+<script src="script.js?v=20260925-angulo"></script>
 <script src="destacados.js?v=nombre"></script>
 <script src="relacionados-tabs.js?v=1"></script>
-<script src="comparar-ficha.js"></script>
+<script src="comparar-ficha.js?v=20260925-angulos"></script>
 <script src="../global/compare-bar.js"></script>
 <script src="../global/floating-ui.js"></script>
 

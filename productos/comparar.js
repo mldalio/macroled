@@ -57,8 +57,14 @@
     return list;
   }
 
-  function removeFromCompare(sku) {
-    const list = getCompareList().filter((p) => p.sku !== sku);
+  function removeFromCompare(id) {
+    const key = String(id || "");
+    const list = getCompareList().filter((p) => {
+      const entry = p.entryId || (p.focusAngulo ? String(p.sku || "").trim().toUpperCase() + "|" + p.focusAngulo : p.sku);
+      if (entry === key) return false;
+      if (!key.includes("|") && (p.sku === key || p.variantSku === key)) return false;
+      return true;
+    });
     saveCompareList(list);
     return list;
   }

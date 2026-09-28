@@ -24,6 +24,7 @@
           sku: product.sku,
           nombre: product.nombre || "",
           img: product.img || "",
+          focusAngulo: product.focusAngulo || "",
         });
         return _fallbackList.slice();
       },
@@ -36,6 +37,11 @@
         _fallbackList.length = 0;
       },
       isInCompare: (sku) => _fallbackList.some((p) => p.sku === sku),
+      setFocusAngulo: (sku, angulo) => {
+        const item = _fallbackList.find((p) => p.sku === sku);
+        if (item && angulo) item.focusAngulo = angulo;
+        return _fallbackList.slice();
+      },
     };
   }
 
@@ -68,7 +74,11 @@
       document.getElementById("stageImg")?.currentSrc ||
       document.getElementById("stageImg")?.src ||
       "";
-    return { sku, nombre, img };
+    const focusAngulo =
+      window.MacroledFocusAngle && typeof window.MacroledFocusAngle.get === "function"
+        ? window.MacroledFocusAngle.get(sku)
+        : "";
+    return { sku, nombre, img, focusAngulo };
   }
 
   function setCheckboxProduct(product) {
@@ -138,11 +148,11 @@
       .map(
         (p) => `
       <div class="compare-chip">
-        <button type="button" class="compare-chip-remove" data-remove="${p.sku}" aria-label="Quitar">×</button>
+        <button type="button" class="compare-chip-remove" data-remove="${compareEntryId(p)}" aria-label="Quitar">×</button>
         <div class="compare-chip-thumb">${p.img ? `<img src="${p.img}" alt="" loading="lazy">` : ""}</div>
         <div class="compare-chip-info">
           <span class="compare-chip-name">${p.nombre}</span>
-          ${p.sku ? `<span class="compare-chip-sku">${p.sku}</span>` : ""}
+          ${p.sku ? `<span class="compare-chip-sku">${p.focusAngulo ? p.sku + " · " + p.focusAngulo : p.sku}</span>` : ""}
         </div>
       </div>`
       )
@@ -195,12 +205,33 @@
     updateComparePadding();
   }
 
+  function currentFocusAngulo(sku) {
+    return window.MacroledFocusAngle && typeof window.MacroledFocusAngle.get === "function"
+      ? window.MacroledFocusAngle.get(sku)
+      : "";
+  }
+
+  function compareEntryId(product) {
+    if (!product) return "";
+    if (product.entryId) return String(product.entryId);
+    const sku = String(product.sku || "").trim();
+    const angle = String(product.focusAngulo || "").trim();
+    if (angle) return sku.toUpperCase() + "|" + angle;
+    return sku;
+  }
+
+  function isCurrentAngleInList(list, sku) {
+    const angle = currentFocusAngulo(sku);
+    const entryId = compareEntryId({ sku: sku, focusAngulo: angle });
+    return list.some((p) => compareEntryId(p) === entryId);
+  }
+
   function syncCompareCheckboxes() {
     const list = window.MacroledCompare.getCompareList();
     const atLimit = list.length >= COMPARE_MAX;
     document.querySelectorAll(".compare-checkbox").forEach((input) => {
       const sku = input.dataset.sku;
-      const isSelected = !!sku && list.some((p) => p.sku === sku);
+      const isSelected = !!sku && isCurrentAngleInList(list, sku);
       input.checked = isSelected;
       input.disabled = !sku || (atLimit && !isSelected);
       const label = input.closest(".compare-row");
@@ -223,19 +254,22 @@
         return;
       }
       if (cb.checked) {
+        const focusAngulo = currentFocusAngulo(sku);
         const updated = window.MacroledCompare.addToCompare({
           sku,
           nombre,
           img,
+          focusAngulo,
         });
-        if (!updated.some((p) => p.sku === sku)) {
+        if (!isCurrentAngleInList(updated, sku)) {
           cb.checked = false;
           showMsg(`Máximo ${COMPARE_MAX} productos para comparar`);
         } else {
           showMsg("");
         }
       } else {
-        window.MacroledCompare.removeFromCompare(sku);
+        const focusAngulo = currentFocusAngulo(sku);
+        window.MacroledCompare.removeFromCompare(compareEntryId({ sku: sku, focusAngulo: focusAngulo }));
         showMsg("");
       }
       renderCompareBar();
@@ -279,6 +313,9 @@
     });
     window.addEventListener("ml-product-changed", () => {
       bindCurrentProduct();
+    });
+    window.addEventListener("ml-focus-angle-changed", () => {
+      syncCompareCheckboxes();
     });
     // El motor del asistente (copiado de productos/script.js) ya no manda
     // el evento "macroled-assistant-toggle" — observamos directamente la

@@ -2,14 +2,13 @@
   HTML para pegar en el Embed de la plantilla de producto en Webflow.
   Es la estructura vacía: no trae datos de ningún producto.
   El script lee el SKU del Text Block #ml-cms-sku y completa nombre, specs, fotos y descargas.
-  Mientras carga, .wrap.is-hydrating tapa el contenido y muestra "Cargando producto…".
+  Mientras carga, el preloader global (logo Macroled) tapa la página.
+  En el <html> de Webflow: class="ml-loading" data-ml-preload="typesense"
+  y en Head: preload.css + preload.js (ver comentarios de index.html).
 -->
 <main>
   <div class="wrap is-hydrating">
-    <div class="ficha-loader" id="fichaLoader" role="status" aria-live="polite">
-      <span class="ficha-loader__spin" aria-hidden="true"></span>
-      <span class="ficha-loader__text">Cargando producto…</span>
-    </div>
+    <p class="ficha-error" id="fichaError" hidden></p>
     <nav class="crumb" aria-label="Miga de pan">
       <a href="/productos">Productos</a><span class="sep">›</span>
       <a id="crumb-family"></a><span class="sep">›</span>
